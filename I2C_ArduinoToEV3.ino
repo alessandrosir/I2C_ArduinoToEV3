@@ -92,6 +92,7 @@ void setup() {
 
   //servo[ID].attach(pin);
   servo[3].attach(10);
+  servo[4].attach(11);
   //ultrasonic[ID].attach(pin);
   //led[ID].attach(pin);
   led[4].attach(7);
@@ -124,12 +125,15 @@ typedef enum {  // index das ações utilizado nas listas
   _USE_STEPPER_MOTOR,
   _USE_INFRA_RED,
   _USE_ULTRASONIC,
+  _INTERN_FOR_LOOP,
 } options_index;
 
 
 uint8_t instruction[] = { 255, 0, 0, 0, 0, 0, 0, 0 };  // valores recebidor por I2C
 uint8_t returnValue[] = { 255, 0, 0, 0, 0, 0, 0, 0 };  // valores que serão retornados por I2C
 boolean pendingValue;                                  // se possui algum valor para ser enviado
+
+int _INTERN_FOR_INDEX = 0, _INTERN_FOR_VALUE = 0;
 
 void receiveData(int bytesIn) {
   for (int byte_count = 0; 1 < Wire.available(); byte_count++) {
@@ -141,8 +145,8 @@ void receiveData(int bytesIn) {
 
   if (instruction[_MAIN_ACTION] == 255) return;
 
-  switch (instruction[_MAIN_ACTION]) {
     Serial.println("RECEIVED INSTRUCTIONS");
+  switch (instruction[_MAIN_ACTION]) {
     case _USE_LED:
       led[instruction[_ID]].toggle(isDigital, instruction[_SECONDARY_ACTION]);
       break;
@@ -166,13 +170,25 @@ void receiveData(int bytesIn) {
       //Serial.println("Ultrasonic[" + String(instruction[_ID]) + "] = " + String(returnValue[0]));
       pendingValue = true;
       break;
-    
-    case 7:
-      returnValue[0] = 2;
-      returnValue[1] = 4;
-      returnValue[2] = 6;
-      pendingValue = true;
+    case _INTERN_FOR_LOOP:
+      if (_INTERN_FOR_INDEX > 0){
+        if (_INTERN_FOR_VALUE >= 6) {
+          returnValue[0] = 6;
+          _INTERN_FOR_VALUE =- 6;
+        } else {
+          returnValue[0] = _INTERN_FOR_VALUE;
+          _INTERN_FOR_VALUE = 0;
+        }
+        _INTERN_FOR_INDEX--;
+        pendingValue = true;
+      }
       break;
+      case 9:
+        returnValue[0] = 5;
+        _INTERN_FOR_VALUE = 9;
+        _INTERN_FOR_INDEX = 2;
+        pendingValue = true;
+        break;
   }
 }
 
