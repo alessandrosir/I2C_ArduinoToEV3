@@ -54,11 +54,11 @@ class InfraRed {
 private:
   int pin;  // variável que armazena qual é o pino do respectivo sensor infra vermelho
 public:
-  void attach(int pin, boolean isDigital);  // metodo que define o pino comoo entrada caso seja digital
-  float getValue(bool isDigital);           // método que retorna o valor do sensor infra vermelho
+  void attach(int pin, bool isDigital);  // metodo que define o pino comoo entrada caso seja digital
+  float getValue(bool isDigital);        // método que retorna o valor do sensor infra vermelho
 };
 
-void InfraRed::attach(int pin, boolean isDigital = true) {
+void InfraRed::attach(int pin, bool isDigital = true) {
   if (isDigital)
     pinMode(pin, INPUT);
   this->pin = pin;
@@ -91,9 +91,10 @@ void setup() {
   Wire.onRequest(sendData);     // após receber, irá requisitar que envie algo, e será chamado a função 'sendData'
 
   //servo[ID].attach(pin);
-  //servo[_LEFT_ARM_SERVO].attach(5);
+  servo[3].attach(10);
   //ultrasonic[ID].attach(pin);
-  //led[ID].attach(pin)
+  //led[ID].attach(pin);
+  led[4].attach(7);
   //infraRed[ID].attach(pin);
 
   Serial.begin(9600);
@@ -141,6 +142,7 @@ void receiveData(int bytesIn) {
   if (instruction[_MAIN_ACTION] == 255) return;
 
   switch (instruction[_MAIN_ACTION]) {
+    Serial.println("RECEIVED INSTRUCTIONS");
     case _USE_LED:
       led[instruction[_ID]].toggle(isDigital, instruction[_SECONDARY_ACTION]);
       break;
@@ -162,6 +164,13 @@ void receiveData(int bytesIn) {
     case _USE_ULTRASONIC:
       returnValue[0] = ultrasonic[_ID].read();
       //Serial.println("Ultrasonic[" + String(instruction[_ID]) + "] = " + String(returnValue[0]));
+      pendingValue = true;
+      break;
+    
+    case 7:
+      returnValue[0] = 2;
+      returnValue[1] = 4;
+      returnValue[2] = 6;
       pendingValue = true;
       break;
   }
