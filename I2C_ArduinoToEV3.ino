@@ -1,7 +1,7 @@
 #include <Wire.h>
 #include <Servo.h>
 
-#define SLAVE_ADDRESS 0x04
+#define SLAVE_ADDRESS 0x04  // endereço da comunicação I2C
 
 class Ultrasonic {
 private:
@@ -26,13 +26,42 @@ void Ultrasonic::attach(int trigPin, int echoPin) {
 };
 
 
+class LED {
+public:
+  void attach(int pin);
+};
+
+void LED::attach(int pin) {
+  pinMode(pin, OUTPUT);
+};
+
+
+class InfraRed {
+public:
+  void attach(int pin, boolean isDigital);
+};
+
+void InfraRed::attach(int pin, boolean isDigital = true) {
+  if (isDigital)
+    pinMode(pin, INPUT);
+};
+
+
+
 Servo servo[6];
 Ultrasonic ultrasonic[6];
+//LED led[6];
+//InfraRed infraRed[3];
 
 void setup() {
-  Wire.begin(SLAVE_ADDRESS);    // Define o endereço I2C e o inicia
-  Wire.onReceive(receiveData);  // Irá chamar a função 'receiveData' ao receber informação através do I2C
-  Wire.onRequest(sendData);     // Após receber, irá requisitar que envie algo, e será chamado a função 'sendData'
+  Wire.begin(SLAVE_ADDRESS);    // define o endereço I2C e o inicia
+  Wire.onReceive(receiveData);  // irá chamar a função 'receiveData' ao receber informação através do I2C
+  Wire.onRequest(sendData);     // após receber, irá requisitar que envie algo, e será chamado a função 'sendData'
+
+  //servo[ID].attach(pin);
+  //ultrasonic[ID].attach(pin);
+  //led[ID].attach(pin);
+  //infraRed[ID].attach(pin);
 
   Serial.begin(9600);
   while (!Serial) {
@@ -48,125 +77,71 @@ void loop() {
 
 
 typedef enum {
-  _FIRST_PIN,    // Primeiro pino
-  _SECOND_PIN,   // Segundo pino
-  _ARE_DIGITAL,  // Pinos em porta digital?
-  _ACTION_1,     // Tipo de ação (led, servo, sensor, motor)
-  _ACTION_2,     // Segunda ação
-  _ACTION_3,     // Terceira ação
-  _ACTION_4,     // Quarta ação
-  _ACTION_5,     // Quinta ação
+  _MAIN_ACTION,       // ação principal
+  _SECONDARY_ACTION,  // ação secundária
+  _ACTION_3,          // terceira ação
+  _ACTION_4,          // quarta ação
+  _ID,                // identificador
 } instruction_index;
 
-typedef enum {  // Index utilizado nas listas
-  _INITIALIZE_PINS = (0),
-  _LED = (1),
-  _SERVO = (2),
-  _MOTOR = (3),
-  _SENSOR = (4),
-  _INFRA_RED = (5),
-  _ULTRASONIC = (6),
+typedef enum {  // index das ações utilizado nas listas
+  _USE_LED,
+  _USE_SERVO,
+  _USE_STEPPER_MOTOR,
+  _USE_INFRA_RED,
+  _USE_ULTRASONIC,
 } options_index;
 
 
-uint8_t instruction[] = { 255, 0, 0, 0, 0, 0, 0, 0 };  // Valores recebidor por I2C
-uint8_t sensorValue[] = { 000, 0, 0, 0, 0, 0, 0, 0 };  // Valores que serão retornados por I2C
-
+uint8_t instruction[] = { 255, 0, 0, 0, 0, 0, 0, 0 };  // valores recebidor por I2C
+uint8_t returnValue[] = { 255, 0, 0, 0, 0, 0, 0, 0 };  // valores que serão retornados por I2C
+boolean pendingValue;                                  // se possui algum valor para ser enviado
 
 void receiveData(int bytesIn) {
   for (int byte_count = 0; 1 < Wire.available(); byte_count++) {
     instruction[byte_count] = Wire.read();
   }
-  byte dummyByte = Wire.read();
-  // Lê o último byte fictício (não tem significado, mas precisa ser lido)
+  const byte dummyByte = Wire.read();                                           // lê o último byte fictício (não tem significado, mas precisa ser lido)
+  const boolean areDigital = instruction[_ID] < 100 || instruction[_ID] < 100;  // se alguns dos IDs forem maior que 100, significa que são analógicos
+  pendingValue = false;
 
-  Serial.print("ACTION: ");
-  switch (instruction[_ACTION_1]) {
-    // _ACTION_1 -> Tipo de ação
-    case _INITIALIZE_PINS:
-      Serial.print("Initialized pin(s) " + String(instruction[_FIRST_PIN]));
-      switch (instruction[_ACTION_2]) {
-        // _ACTION_2 -> Tipo de sensor
-        case _LED:
-          pinMode(instruction[_FIRST_PIN], OUTPUT);
-          Serial.println(" as a LED");
-          break;
+  if (instruction[_MAIN_ACTION] == 255) return;
 
-        case _SERVO:
-          servo[instruction[_ACTION_3]].attach(instruction[_FIRST_PIN]);
-          Serial.println(" as a Servo[" + String(instruction[_ACTION_3]) + "]");
-          // _ACTION_3 -> ID do servo
-          break;
-
-        case _MOTOR:
-          pinMode(instruction[_FIRST_PIN], OUTPUT);
-          Serial.println(" as a First Motor");
-          pinMode(instruction[_SECOND_PIN], OUTPUT);
-          Serial.println(String(instruction[_SECOND_PIN]) + " as a Second Motor");
-          break;
-
-        case _SENSOR:
-          switch (instruction[_ACTION_3]) {
-            // _ACTION_3 ->  Tipo de sensor
-            case _INFRA_RED:
-              if (instruction[_ARE_DIGITAL])
-                pinMode(instruction[_FIRST_PIN], INPUT);
-              Serial.println(" as a Infra Red sensor");
-              break;
-
-            case _ULTRASONIC:
-              ultrasonic[instruction[_ACTION_4]].attach(instruction[_FIRST_PIN], instruction[_SECOND_PIN]);
-              Serial.println("and" + String(instruction[_SECOND_PIN]) + "as a Ultrasonic Sensor [" + String(instruction[_ACTION_4]) + "]");
-              // _ACTION_4 -> ID do ultrasonico
-              break;
-          }
-          break;
+  switch (instruction[_MAIN_ACTION]) {
+    case _USE_LED:
+      if (areDigital) {
+        digitalWrite(instruction[_ID], instruction[_SECONDARY_ACTION] ? HIGH : LOW);
+        Serial.println("LED[" + String(instruction[_ID]) + "] Turned on/off");
+      } else {
+        instruction[_ID] -= 100;
+        analogWrite(instruction[_ID], map(instruction[_SECONDARY_ACTION], 0, 100, 0, 255));
+        Serial.println("LED[" + String(instruction[_ID]) + "] at " + String(map(instruction[_SECONDARY_ACTION], 0, 100, 0, 255)) + "%");
       }
       break;
 
-    case _LED:
-      digitalWrite(instruction[_FIRST_PIN], instruction[_ACTION_2] ? HIGH : LOW);
-      Serial.println("Turned on/off the LED[" + String(instruction[_FIRST_PIN]) + "]");
-      // _ACTION_2 -> Estado do LED (Ligado/Desligado)
+    case _USE_SERVO:
+      servo[instruction[_ID]].write(instruction[_SECONDARY_ACTION]);
+      Serial.println("Changed the angle of the Servo Motor[" + String(instruction[_ID]) + "] to " + String(instruction[_SECONDARY_ACTION]) + "degrees");
       break;
 
-    case _SERVO:
-      servo[instruction[_FIRST_PIN]].write(instruction[_ACTION_2]);
-      Serial.println("Changed the angle of the Servo Motor[" + String(instruction[_FIRST_PIN]) + "] to " + String(instruction[_ACTION_2]) + "degrees");
-      // _ACTION_2 -> Ângulo do servo motor
+    case _USE_STEPPER_MOTOR:
+
+      break;
+    case _USE_INFRA_RED:
+      returnValue[0] = instruction[areDigital] ? digitalRead(instruction[_ID]) : map(analogRead(instruction[_ID]), 0, 1023, 0, 100);
+      Serial.println("Infra Red[" + String(instruction[_ID]) + "] = " + String(returnValue[0]));
+      pendingValue = true;
       break;
 
-    case _MOTOR:
-      analogWrite(instruction[_FIRST_PIN], instruction[_ACTION_2] * 2.55);
-      Serial.println("Changed the velocity of the DC Motor[" + String(instruction[_FIRST_PIN]) + "] to " + String(instruction[_ACTION_2]));
-      // _ACTION_2 -> Velocidade do primeiro motor
-      analogWrite(instruction[_SECOND_PIN], instruction[_ACTION_3] * 2.55);
-      Serial.println("Changed the velocity of the DC Motor[" + String(instruction[_SECOND_PIN]) + "] to " + String(instruction[_ACTION_3]));
-      // _ACTION_3 -> Velocidade do segundo motor
-      break;
-
-    case _SENSOR:
-      Serial.print("Read sensor value of ");
-      switch (instruction[_ACTION_2]) {
-        // _ACTION_2 -> Tipo de sensor
-        case _INFRA_RED:
-          sensorValue[0] = instruction[_ARE_DIGITAL] ? digitalRead(instruction[_FIRST_PIN]) : analogRead(instruction[_FIRST_PIN]);
-          Serial.println("Infra Red[" + String(instruction[_FIRST_PIN]) + "] = " + String(sensorValue[0]));
-          break;
-
-        case _ULTRASONIC:
-          sensorValue[0] = ultrasonic[_ACTION_3].read();
-          Serial.println("Ultrasonic[" + String(instruction[_ACTION_3]) + "] = " + String(sensorValue[0]));
-          // _ACTION_3 -> ID do ultrasonico
-          break;
-      }
+    case _USE_ULTRASONIC:
+      returnValue[0] = ultrasonic[_ID].read();
+      Serial.println("Ultrasonic[" + String(instruction[_ID]) + "] = " + String(returnValue[0]));
+      pendingValue = true;
       break;
   }
 }
 
 void sendData() {
-  if (instruction[_ACTION_1] == _SENSOR) {
-    // _ACTION_1 -> Tipo de ação
-    Wire.write(sensorValue[0]);  // Envia o valor obtido pelo sensor
-  }
+  if (pendingValue)
+    Wire.write(returnValue[0]);  // Envia o valor obtido pelo sensor
 }
