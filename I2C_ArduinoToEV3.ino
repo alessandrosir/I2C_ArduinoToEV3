@@ -23,7 +23,7 @@ float Ultrasonic::read() {
   digitalWrite(this->trigPin, HIGH);
   delayMicroseconds(10);
   digitalWrite(this->trigPin, LOW);
-  float distance = pulseIn(this->echoPin, HIGH) / 58.2;
+  float distance = pulseIn(this->echoPin, HIGH, 5000) / 58.2;
   return distance;
 };
 
@@ -135,6 +135,7 @@ void setup() {
   servo[_LEFT_CLAW_SERVO].write(90);
   servo[_RIGHT_CLAW_SERVO].write(83);
 
+  led[_LED1].toggle(true);
   Serial.println("Ready!");
 }
 
@@ -157,6 +158,7 @@ typedef enum {  // index das ações utilizado nas listas
   _USE_STEPPER_MOTOR,
   _USE_INFRA_RED,
   _USE_ULTRASONIC,
+  _USE_COMPARE_ULTRASONIC,
   _USE_BUTTOM,
   _CHANGE_CLAW,
   _CHANGE_CLAW_ARMS,
@@ -173,6 +175,7 @@ int b[4];
 int rest;
 int amountOfFragments = 4;
 int fragmentIndex = -1;
+boolean ignore;
 
 void receiveData(int bytesIn) {
   for (int byte_count = 0; 1 < Wire.available(); byte_count++) {
@@ -204,10 +207,7 @@ void receiveData(int bytesIn) {
       break;
 
     case _USE_ULTRASONIC:
-
-      //float ivv = ultrasonic[instruction[_ID]].read();
-      float ivv = 18.9;
-      value = constrain(ivv, 0, 100) * 10;
+      value = constrain(round(ultrasonic[instruction[_ID]].read()*10)/10, 0, 60);
       rest = 0;
 
       for (int i = amountOfFragments - 1; i > 0; i--) {
@@ -219,13 +219,16 @@ void receiveData(int bytesIn) {
 
       fragmentIndex = amountOfFragments - 1;
 
-      Serial.print("B7 = ");
-      Serial.print(b[0] = 1);
-      Serial.print(b[1] = 2);
-      Serial.print(b[2] = 3);
-      Serial.print(b[3] = 4);
-      Serial.println();
+      pendingValue = true;
+      break;
 
+    case _USE_COMPARE_ULTRASONIC:
+      value = ultrasonic[instruction[_ID]].read();
+      if (value <= instruction[_SECONDARY_ACTION]) {
+        returnValue[0] = 1;
+      } else {
+        returnValue[0] = 0;
+      }
       pendingValue = true;
       break;
 
@@ -248,14 +251,19 @@ void receiveData(int bytesIn) {
       servo[_CONTAINER_SERVO].write(instruction[_SECONDARY_ACTION] * 90);
       break;
   }
+  ignore = true;
 }
 
 void sendData() {
   if (pendingValue) {
+    if (ignore) {
+      ignore = false;
+      return;
+    }
     if (fragmentIndex >= 0) {
       returnValue[0] = b[fragmentIndex--];
     }
-    Serial.println("ENVIADO -> " + String(returnValue[0]));
-    Wire.write(returnValue[0]);  // Envia o valor obtido pelo sensor
+    Serial.println("================");
+    Wire.write(constrain(returnValue[0], 0, 7));  // Envia o valor obtido pelo sensor
   }
 }
