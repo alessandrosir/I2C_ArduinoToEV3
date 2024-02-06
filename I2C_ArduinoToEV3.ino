@@ -51,22 +51,24 @@ void LED::toggle(int state, bool isDigital) {
 class InfraRed {
 private:
   int pin;  // variável que armazena qual é o pino do respectivo sensor infra vermelho
+  boolean isDigital = false;
 public:
   void attach(int pin, bool isDigital);  // metodo que define o pino comoo entrada caso seja digital
-  float getValue(bool isDigital);        // método que retorna o valor do sensor infra vermelho
+  float getValue();                      // método que retorna o valor do sensor infra vermelho
 };
 
 void InfraRed::attach(int pin, bool isDigital = true) {
   if (isDigital)
-    pinMode(pin, INPUT);
+    this->isDigital = true;
+  pinMode(pin, INPUT);
   this->pin = pin;
 };
 
-float InfraRed::getValue(bool isDigital) {
-  if (isDigital)
+float InfraRed::getValue() {
+  if (this->isDigital)
     return digitalRead(this->pin);
   else
-    return map(analogRead(this->pin), 0, 1023, 0, 100);
+    return map(analogRead(this->pin), 0, 1023, 0, 10);
 };
 
 
@@ -108,7 +110,7 @@ void setup() {
   Wire.onReceive(receiveData);  // irá chamar a função 'receiveData' ao receber informação através do I2C
   Wire.onRequest(sendData);     // após receber, irá requisitar que envie algo, e será chamado a função 'sendData'
 
-  //servo[_LEFT_ARM_SERVO].attach();
+  servo[_LEFT_ARM_SERVO].attach(9);
   //servo[_RIGHT_ARM_SERVO].attach();
   servo[_LEFT_CLAW_SERVO].attach(10);
   servo[_RIGHT_CLAW_SERVO].attach(11);
@@ -120,13 +122,18 @@ void setup() {
   led[_LED1].attach(7);
   //led[_LED2].attach();
 
-  //infraRed[_DETECTOR_IR].attach(, true);
-  //infraRed[_VERIFIER_IR].attach(, false);
+  infraRed[_DETECTOR_IR].attach(0, true);
+  infraRed[_VERIFIER_IR].attach(1, false);
+
+  //pinMode(, INPUT); // BOTÃo
 
   Serial.begin(9600);
   while (!Serial) {
     delay(10);
   }
+
+  servo[_LEFT_CLAW_SERVO].write(90);
+  servo[_RIGHT_CLAW_SERVO].write(83);
 
   Serial.println("Ready!");
 }
@@ -171,9 +178,9 @@ void receiveData(int bytesIn) {
   for (int byte_count = 0; 1 < Wire.available(); byte_count++) {
     instruction[byte_count] = Wire.read();
   }
-  const byte dummyByte = Wire.read();                // lê o último byte fictício (não tem significado, mas precisa ser lido)
-  const boolean isDigital = instruction[_ID] < 100;  // se o ID for maior que 100, significa que é analógico
-  pendingValue = false;                              // reseta a variável responsável por identificar se há dados a serem enviados
+  const byte dummyByte = Wire.read();  // lê o último byte fictício (não tem significado, mas precisa ser lido)
+  const boolean isDigital = true;      //
+  pendingValue = false;                // reseta a variável responsável por identificar se há dados a serem enviados
 
   if (instruction[_MAIN_ACTION] == 255) return;
 
@@ -191,18 +198,15 @@ void receiveData(int bytesIn) {
 
       break;
     case _USE_INFRA_RED:
-      returnValue[0] = infraRed[instruction[_ID]].getValue(isDigital);
+      returnValue[0] = infraRed[instruction[_ID]].getValue();
       //Serial.println("Infra Red[" + String(instruction[_ID]) + "] = " + String(returnValue[0]));
       pendingValue = true;
       break;
 
     case _USE_ULTRASONIC:
-      //returnValue[0] = ultrasonic[_ID].read();
-      //Serial.println("Ultrasonic[" + String(instruction[_ID]) + "] = " + String(returnValue[0]));
 
-
-      int ivv = ultrasonic[instruction[_ID]].read();
-      Serial.println(ivv);
+      //float ivv = ultrasonic[instruction[_ID]].read();
+      float ivv = 18.9;
       value = constrain(ivv, 0, 100) * 10;
       rest = 0;
 
@@ -216,27 +220,32 @@ void receiveData(int bytesIn) {
       fragmentIndex = amountOfFragments - 1;
 
       Serial.print("B7 = ");
-      Serial.print(b[0]);
-      Serial.print(b[1]);
-      Serial.print(b[2]);
-      Serial.print(b[3]);
+      Serial.print(b[0] = 1);
+      Serial.print(b[1] = 2);
+      Serial.print(b[2] = 3);
+      Serial.print(b[3] = 4);
       Serial.println();
 
       pendingValue = true;
       break;
 
-    case _USE_BUTTOM:
-
+    case _USE_BUTTOM:  // CRIAR CLASSE BOTÂO
+      returnValue[0] = digitalRead(instruction[_ID]);
+      pendingValue = true;
       break;
 
     case _CHANGE_CLAW:
-
+      servo[_LEFT_CLAW_SERVO].write(instruction[_SECONDARY_ACTION] ? 90 - 55 : 90);
+      servo[_RIGHT_CLAW_SERVO].write(instruction[_ACTION_3] ? 83 + 55 : 83);
       break;
+
     case _CHANGE_CLAW_ARMS:
-
+      servo[_LEFT_ARM_SERVO].write(instruction[_SECONDARY_ACTION] ? 180 - 90 : 180);
+      servo[_RIGHT_ARM_SERVO].write(instruction[_ACTION_3] ? 0 + 90 : 0);
       break;
-    case _CHANGE_CONTAINER_DOOR:
 
+    case _CHANGE_CONTAINER_DOOR:
+      servo[_CONTAINER_SERVO].write(instruction[_SECONDARY_ACTION] * 90);
       break;
   }
 }
@@ -246,6 +255,7 @@ void sendData() {
     if (fragmentIndex >= 0) {
       returnValue[0] = b[fragmentIndex--];
     }
+    Serial.println("ENVIADO -> " + String(returnValue[0]));
     Wire.write(returnValue[0]);  // Envia o valor obtido pelo sensor
   }
 }
