@@ -3,12 +3,13 @@
 
 #define SLAVE_ADDRESS 0x04  // endereço utlizado na comunicação I2C
 
+
 class Ultrasonic {
-  private:
-    int trigPin, echoPin;  // variáveis que armazenam quais são os pinos do respectivo ultrassônico
-  public:
-    void attach(int trigPin, int echoPin);  // metodo que define os pinos comoo entrada e saída
-    float read();                           // método que retorna o valor do ultrasônico
+private:
+  int trigPin, echoPin;  // variáveis que armazenam quais são os pinos do respectivo ultrassônico
+public:
+  void attach(int trigPin, int echoPin);  // metodo que define os pinos comoo entrada e saída
+  float read();                           // método que retorna o valor do ultrasônico
 };
 
 void Ultrasonic::attach(int trigPin, int echoPin) {
@@ -28,11 +29,11 @@ float Ultrasonic::read() {
 
 
 class LED {
-  private:
-    int pin;  // variável que armazena qual é o pino do respectivo LED
-  public:
-    void attach(int pin);                                  // metodo que define o pino comoo saída
-    void toggle(int state = true, bool isDigital = true);  // alterna o estado do LED, podendo ser de 0% a 100% quando analógico e desligado/ligado quando digital
+private:
+  int pin;  // variável que armazena qual é o pino do respectivo LED
+public:
+  void attach(int pin);                                  // metodo que define o pino comoo saída
+  void toggle(int state = true, bool isDigital = true);  // alterna o estado do LED, podendo ser de 0% a 100% quando analógico e desligado/ligado quando digital
 };
 
 void LED::attach(int pin) {
@@ -44,18 +45,15 @@ void LED::toggle(int state, bool isDigital) {
     digitalWrite(this->pin, state ? HIGH : LOW);
   else
     analogWrite(this->pin, map(state, 0, 100, 0, 255));
-
-  //Serial.println("LED[" + String(this->pin) + "] Turned on/off");
-  //Serial.println("LED[" + String(this->pin) + "] at " + String(map(state, 0, 100, 0, 255)) + "%");
 }
 
 
 class InfraRed {
-  private:
-    int pin;  // variável que armazena qual é o pino do respectivo sensor infra vermelho
-  public:
-    void attach(int pin, bool isDigital);  // metodo que define o pino comoo entrada caso seja digital
-    float getValue(bool isDigital);        // método que retorna o valor do sensor infra vermelho
+private:
+  int pin;  // variável que armazena qual é o pino do respectivo sensor infra vermelho
+public:
+  void attach(int pin, bool isDigital);  // metodo que define o pino comoo entrada caso seja digital
+  float getValue(bool isDigital);        // método que retorna o valor do sensor infra vermelho
 };
 
 void InfraRed::attach(int pin, bool isDigital = true) {
@@ -72,32 +70,58 @@ float InfraRed::getValue(bool isDigital) {
 };
 
 
-Servo servo[6];
-
 typedef enum {
   _LEFT_ARM_SERVO,
+  _RIGHT_ARM_SERVO,
   _LEFT_CLAW_SERVO,
   _RIGHT_CLAW_SERVO,
   _CONTAINER_SERVO,
+  _SERVO_LENGTH,
 } servos_index;
 
-Ultrasonic ultrasonic[6];
-LED led[6];
-InfraRed infraRed[3];
+typedef enum {
+  _FRONTAL_ULTRASONIC,
+  _SIDE_ULTRASONIC,
+  _ULTRASONIC_LENGTH,
+} ultrasonics_index;
+
+typedef enum {
+  _LED1,
+  _LED2,
+  _LED_LENGTH,
+} leds_index;
+
+typedef enum {
+  _DETECTOR_IR,
+  _VERIFIER_IR,
+  _IR_LENGTH,
+} infrareds_index;
+
+Servo servo[_SERVO_LENGTH];
+Ultrasonic ultrasonic[_ULTRASONIC_LENGTH];
+LED led[_LED_LENGTH];
+InfraRed infraRed[_IR_LENGTH];
+
 
 void setup() {
   Wire.begin(SLAVE_ADDRESS);    // define o endereço para comunicação I2C e o inicia
   Wire.onReceive(receiveData);  // irá chamar a função 'receiveData' ao receber informação através do I2C
   Wire.onRequest(sendData);     // após receber, irá requisitar que envie algo, e será chamado a função 'sendData'
 
-  //servo[ID].attach(pin);
-  servo[3].attach(10);
-  servo[4].attach(11);
-  //ultrasonic[ID].attach(pin);
-  ultrasonic[0].attach(3, 4);
-  //led[ID].attach(pin);
-  led[4].attach(7);
-  //infraRed[ID].attach(pin);
+  //servo[_LEFT_ARM_SERVO].attach();
+  //servo[_RIGHT_ARM_SERVO].attach();
+  servo[_LEFT_CLAW_SERVO].attach(10);
+  servo[_RIGHT_CLAW_SERVO].attach(11);
+  //servo[_CONTAINER_SERVO].attach();
+
+  ultrasonic[_FRONTAL_ULTRASONIC].attach(3, 4);
+  //ultrasonic[_SIDE_ULTRASONIC].attach();
+
+  led[_LED1].attach(7);
+  //led[_LED2].attach();
+
+  //infraRed[_DETECTOR_IR].attach(, true);
+  //infraRed[_VERIFIER_IR].attach(, false);
 
   Serial.begin(9600);
   while (!Serial) {
@@ -114,10 +138,10 @@ void loop() {
 
 typedef enum {
   _MAIN_ACTION,       // ação principal
-  _SECONDARY_ACTION, // ação secundária
-  _ACTION_3,         // terceira ação
-  _ACTION_4,         // quarta ação
-  _ID,              // identificador
+  _SECONDARY_ACTION,  // ação secundária
+  _ACTION_3,          // terceira ação
+  _ACTION_4,          // quarta ação
+  _ID,                // identificador
 } instruction_index;
 
 typedef enum {  // index das ações utilizado nas listas
@@ -126,7 +150,10 @@ typedef enum {  // index das ações utilizado nas listas
   _USE_STEPPER_MOTOR,
   _USE_INFRA_RED,
   _USE_ULTRASONIC,
-  _INTERN_FRAGMENTED,
+  _USE_BUTTOM,
+  _CHANGE_CLAW,
+  _CHANGE_CLAW_ARMS,
+  _CHANGE_CONTAINER_DOOR,
 } options_index;
 
 
@@ -137,6 +164,8 @@ boolean pendingValue;                                  // se possui algum valor 
 int value;
 int b[4];
 int rest;
+int amountOfFragments = 4;
+int fragmentIndex = -1;
 
 void receiveData(int bytesIn) {
   for (int byte_count = 0; 1 < Wire.available(); byte_count++) {
@@ -177,13 +206,14 @@ void receiveData(int bytesIn) {
       value = constrain(ivv, 0, 100) * 10;
       rest = 0;
 
-      for(int i = 3; i > 0; i--){
+      for (int i = amountOfFragments - 1; i > 0; i--) {
         rest = value % 7;
         value = (value - rest) / 7;
         b[i] = rest;
       }
       b[0] = value;
-      returnValue[0] = b[0];
+
+      fragmentIndex = amountOfFragments - 1;
 
       Serial.print("B7 = ");
       Serial.print(b[0]);
@@ -191,17 +221,31 @@ void receiveData(int bytesIn) {
       Serial.print(b[2]);
       Serial.print(b[3]);
       Serial.println();
-      
+
       pendingValue = true;
       break;
-    case _INTERN_FRAGMENTED:
-      returnValue[0] = b[instruction[_SECONDARY_ACTION]];
-      pendingValue = true;
+
+    case _USE_BUTTOM:
+
+      break;
+
+    case _CHANGE_CLAW:
+
+      break;
+    case _CHANGE_CLAW_ARMS:
+
+      break;
+    case _CHANGE_CONTAINER_DOOR:
+
       break;
   }
 }
 
 void sendData() {
-  if (pendingValue)
+  if (pendingValue) {
+    if (fragmentIndex >= 0) {
+      returnValue[0] = b[fragmentIndex--];
+    }
     Wire.write(returnValue[0]);  // Envia o valor obtido pelo sensor
+  }
 }
